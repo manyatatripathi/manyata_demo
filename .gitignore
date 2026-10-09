@@ -16,3 +16,4 @@ models/tokenizer/*
 runs/
 wandb/
 *.log
+models/tiny-test-model/
