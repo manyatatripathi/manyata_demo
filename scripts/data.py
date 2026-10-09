@@ -2,7 +2,7 @@
 
 Expected files (one JSON object per line):
     <data_dir>/train.jsonl
-    <data_dir>/val.jsonl
+    <data_dir>/val.jsonl      (or validation.jsonl)
     <data_dir>/test.jsonl
 
 Each line can use any one of these layouts:
@@ -21,6 +21,8 @@ import json
 from pathlib import Path
 
 SPLITS = ("train", "val", "test")
+# Accepted file names for each split, in order of preference.
+SPLIT_FILES = {"train": ["train.jsonl"], "val": ["val.jsonl", "validation.jsonl"], "test": ["test.jsonl"]}
 
 SYSTEM_PROMPT = (
     "You are an expert in operating-system CPU process scheduling "
@@ -82,9 +84,10 @@ def load_splits(data_dir: str | Path, splits=SPLITS) -> dict[str, list[list[dict
     data_dir = Path(data_dir)
     out = {}
     for split in splits:
-        path = data_dir / f"{split}.jsonl"
-        if not path.exists():
-            raise FileNotFoundError(f"missing {path} (expected {', '.join(s + '.jsonl' for s in SPLITS)})")
+        candidates = [data_dir / name for name in SPLIT_FILES[split]]
+        path = next((c for c in candidates if c.exists()), None)
+        if path is None:
+            raise FileNotFoundError(f"missing {' or '.join(map(str, candidates))}")
         out[split] = []
         for i, record in enumerate(load_jsonl(path), start=1):
             try:
@@ -116,6 +119,8 @@ def tokenize_example(messages: list[dict], tokenizer, max_length: int) -> dict |
 def main() -> None:
     parser = argparse.ArgumentParser(description="Validate the scheduling JSONL dataset.")
     parser.add_argument("--data-dir", default="data/raw")
+    parser.add_argument("--model", help="also report token lengths using this model's tokenizer")
+    parser.add_argument("--max-length", type=int, default=1024, help="length limit used with --model")
     args = parser.parse_args()
 
     splits = load_splits(args.data_dir)
@@ -131,6 +136,18 @@ def main() -> None:
     print("\nFirst training example:")
     for m in splits["train"][0]:
         print(f"[{m['role']}] {m['content']}\n")
+
+    if args.model:
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained(args.model)
+        print(f"Token lengths with {args.model} (prompt + answer):")
+        for split, examples in splits.items():
+            texts = [tokenizer.apply_chat_template(m, tokenize=False) for m in examples]
+            lengths = sorted(len(ids) for ids in tokenizer(texts, add_special_tokens=False)["input_ids"])
+            too_long = sum(n > args.max_length for n in lengths)
+            print(f"  {split:<5}: median {lengths[len(lengths) // 2]}, max {lengths[-1]}, "
+                  f"{too_long} over --max-length {args.max_length}")
 
 
 if __name__ == "__main__":

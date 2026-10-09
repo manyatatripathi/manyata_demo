@@ -24,7 +24,11 @@ def get_device(require_cuda: bool = False) -> torch.device:
 
 
 def get_amp_dtype() -> torch.dtype:
-    """Mixed-precision dtype: bfloat16 where the GPU supports it, else float16."""
-    if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
+    """Mixed-precision dtype: bfloat16 on Ampere (compute capability 8.0) or newer, else float16.
+
+    Checks the architecture rather than torch.cuda.is_bf16_supported(), which also reports
+    True for emulated bf16 on older GPUs such as the T4.
+    """
+    if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 8:
         return torch.bfloat16
     return torch.float16

@@ -14,7 +14,7 @@ It does not train a model from scratch. Libraries: PyTorch, Hugging Face `transf
 
 ```
 data/
-  raw/              put your dataset here: train.jsonl, val.jsonl, test.jsonl (not committed)
+  raw/              put your dataset here: train.jsonl, validation.jsonl, test.jsonl (not committed)
   processed/        free for derived data (not committed)
   samples/          small example dataset showing the format (committed)
 models/
@@ -26,6 +26,8 @@ scripts/
   device.py         GPU selection and mixed-precision settings
   verify_cuda.py    reports library versions and whether a CUDA GPU is visible
   make_tiny_model.py  tiny random model for CPU smoke tests (no download needed)
+notebooks/
+  colab_finetune_lora.ipynb  end-to-end training + evaluation on Google Colab
 requirements.txt    libraries other than PyTorch
 setup_env.sh        setup for Linux / WSL / cloud GPU VM
 setup_env.ps1       setup for Windows
@@ -62,7 +64,8 @@ Other notes:
 ### Dataset format
 
 Put three JSONL files (one JSON object per line) in `data/raw/`:
-`train.jsonl`, `val.jsonl` and `test.jsonl`. The test questions must not appear in train.
+`train.jsonl`, `validation.jsonl` (or `val.jsonl`) and `test.jsonl`. The test questions must
+not appear in train.
 Each line can use any one of these layouts:
 
 ```json
@@ -82,6 +85,8 @@ shows one formatted example:
 
 ```bash
 python scripts/data.py --data-dir data/raw
+# with token lengths (downloads the tokenizer, about 10 MB):
+python scripts/data.py --data-dir data/raw --model Qwen/Qwen2.5-1.5B-Instruct --max-length 1024
 ```
 
 ### Setup
@@ -106,14 +111,42 @@ python scripts/verify_cuda.py  # should print "CUDA available : yes"
 Then copy your dataset to `data/raw/` on that machine (for example with `scp`, or by uploading
 it in Colab).
 
-On Google Colab, PyTorch with CUDA is already installed, so skip `setup_env.sh` and run:
+### Training on Google Colab (recommended for a CPU-only laptop)
 
-```bash
-!git clone https://github.com/manyatatripathi/manyata_demo.git
-%cd manyata_demo
-!pip install -r requirements.txt
-!python scripts/verify_cuda.py
-```
+Use `notebooks/colab_finetune_lora.ipynb`. It runs every step below on a Colab GPU and
+writes the adapter to Google Drive, so the results survive a disconnect.
+
+1. **Put the dataset on Google Drive** using exactly this layout:
+   ```
+   MyDrive/sched-llm/data/train.jsonl
+   MyDrive/sched-llm/data/validation.jsonl    (val.jsonl also works)
+   MyDrive/sched-llm/data/test.jsonl
+   ```
+2. **Create a GitHub token**, because this repository is private. On GitHub go to
+   Settings → Developer settings → Fine-grained tokens and create one with access to
+   `manyata_demo` only and the permission *Contents: Read-only*. In Colab, open the 🔑 *Secrets*
+   panel, add it as `GITHUB_TOKEN` and enable notebook access.
+3. **Open the notebook in Colab:** File → Open notebook → GitHub tab, tick
+   *Include private repos*, pick `manyatatripathi/manyata_demo`, choose the branch
+   `claude/python-lm-training-setup-tbgloi` and open `notebooks/colab_finetune_lora.ipynb`.
+   Alternatively, download the file from GitHub and use File → Upload notebook.
+4. **Select a GPU:** Runtime → Change runtime type → *T4 GPU* (or L4 / A100).
+5. **Run all cells** (Runtime → Run all) and approve the Google Drive access prompt.
+   The notebook:
+   - checks the GPU with `nvidia-smi` and `scripts/verify_cuda.py`;
+   - clones the repository and installs `requirements.txt` (Colab already has PyTorch with CUDA);
+   - copies the dataset into `data/raw/` and validates it, including token lengths with the Qwen tokenizer;
+   - prints the configuration of `Qwen/Qwen2.5-1.5B-Instruct`;
+   - fine-tunes it with LoRA, turning on gradient checkpointing automatically on 16 GB GPUs;
+   - evaluates the base and fine-tuned models on `test.jsonl` and shows a few answers side by side.
+6. **Find the results on Drive** in `MyDrive/sched-llm/checkpoints/qwen2.5-1.5b-sched-lora/adapter/`:
+   - `adapter_model.safetensors`, `adapter_config.json` and the tokenizer files (the trained adapter);
+   - `training_info.json` (training settings and final validation loss);
+   - `eval_test.jsonl` (each question's answers and scores);
+   - `eval_test_summary.json` (overall base vs fine-tuned scores).
+
+Rough time on a T4 for a few thousand examples: 10 minutes to download the model, 20–60
+minutes to train, and a few minutes to evaluate per 100 test questions.
 
 ### 1. Smoke test on CPU (optional, no download)
 
@@ -142,7 +175,7 @@ On a T4 16 GB, add `--gradient-checkpointing`. For the 7B model with QLoRA, firs
 `pip install bitsandbytes`, then use
 `--model Qwen/Qwen2.5-7B-Instruct --load-in-4bit --gradient-checkpointing`.
 
-The run evaluates on `val.jsonl` after every epoch and keeps the best epoch. It then saves the
+The run evaluates on the validation file after every epoch and keeps the best epoch. It then saves the
 LoRA adapter (tens of MB) to `models/checkpoints/qwen2.5-1.5b-sched-lora/adapter/`.
 Examples longer than `--max-length` tokens are skipped with a warning.
 
