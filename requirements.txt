@@ -1,0 +1,11 @@
+# PyTorch is installed separately by setup_env.sh / setup_env.ps1 so the
+# right CUDA (or CPU-only) build is picked up. Everything else:
+transformers>=5.0
+datasets>=2.19
+tokenizers>=0.19
+peft>=0.17
+accelerate>=1.0
+numpy>=1.26
+matplotlib>=3.8
+tqdm>=4.66
+# Optional, GPU only, for QLoRA (--load-in-4bit):  pip install bitsandbytes

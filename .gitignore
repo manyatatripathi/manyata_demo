@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Datasets and trained weights are large; keep only the folder skeleton
+data/raw/*
+data/processed/*
+models/checkpoints/*
+models/tokenizer/*
+!**/.gitkeep
+
+# Caches / logs
+.cache/
+runs/
+wandb/
+*.log
+models/tiny-test-model/
